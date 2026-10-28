@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "KITA",
+    "slug": "keuangan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/logo-kita.png",
+    "android": {
+      "package": "com.donny.keuangan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-kita.png",
+        "backgroundColor": "#111B2E"
+      }
+    },
+    "plugins": [
+      "expo-sqlite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9e00429f-74e0-4087-ac6d-aa7c861af6c0"
+      }
+    }
+  }
+}
