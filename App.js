@@ -30,7 +30,9 @@ db.execSync(`
     bulan TEXT NOT NULL,
     rekening_id INTEGER,
     ikon TEXT,
-    penyesuaian INTEGER DEFAULT 0
+    penyesuaian INTEGER DEFAULT 0,
+    mulai TEXT,
+    selesai TEXT
   );
   CREATE TABLE IF NOT EXISTS transaksi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +82,15 @@ tambahKolom('transaksi', 'hutang_id', 'INTEGER');
 tambahKolom('anggaran', 'rekening_id', 'INTEGER');
 tambahKolom('anggaran', 'ikon', 'TEXT');
 tambahKolom('anggaran', 'penyesuaian', 'INTEGER DEFAULT 0');
+tambahKolom('anggaran', 'mulai', 'TEXT');
+tambahKolom('anggaran', 'selesai', 'TEXT');
 tambahKolom('rekening', 'warna', 'INTEGER');
+
+// Anggaran lama (per bulan) diubah menjadi rentang 1 s.d. akhir bulan
+db.execSync(`
+  UPDATE anggaran SET mulai = bulan || '-01' WHERE mulai IS NULL OR mulai = '';
+  UPDATE anggaran SET selesai = date(bulan || '-01', '+1 month', '-1 day') WHERE selesai IS NULL OR selesai = '';
+`);
 
 // Kategori bawaan (hanya diisi sekali, saat tabel masih kosong)
 const KAT_AWAL = {
@@ -182,6 +192,39 @@ const jamSekarang = () => {
   return `${dua(d.getHours())}.${dua(d.getMinutes())}`;
 };
 
+// Awal / akhir sebuah bulan ('YYYY-MM')
+const awalBulan = (b) => `${b}-01`;
+const akhirBulan = (b) => {
+  const [y, m] = b.split('-').map(Number);
+  return keISO(new Date(y, m, 0));
+};
+// Selisih hari antara dua tanggal ISO
+const selisihHari = (a, b) => {
+  const [y1, m1, d1] = a.split('-').map(Number);
+  const [y2, m2, d2] = b.split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+};
+// Satu tahun dari tanggal mulai, dikurangi sehari
+const satuTahun = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return keISO(new Date(y + 1, m - 1, d - 1));
+};
+// Periode sebuah anggaran (dengan cadangan untuk data lama)
+const periode = (a) => ({
+  mulai: a.mulai || awalBulan(a.bulan),
+  selesai: a.selesai || akhirBulan(a.bulan),
+});
+// Apakah anggaran bersinggungan dengan bulan tertentu
+const adaDiBulan = (a, b) => {
+  const p = periode(a);
+  return p.mulai <= akhirBulan(b) && p.selesai >= awalBulan(b);
+};
+// Apakah tanggal berada di dalam periode anggaran
+const adaDiTanggal = (a, iso) => {
+  const p = periode(a);
+  return p.mulai <= iso && iso <= p.selesai;
+};
+
 const geserBulan = (b, delta) => {
   const [y, m] = b.split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);
@@ -199,6 +242,10 @@ const tglPendek = (iso) => {
   if (!iso) return '-';
   const [y, m, d] = iso.split('-').map(Number);
   return `${d} ${BULAN_PENDEK[m - 1]} ${y}`;
+};
+const labelPeriode = (a) => {
+  const p = periode(a);
+  return `${tglPendek(p.mulai)} – ${tglPendek(p.selesai)}`;
 };
 const labelTanggal = (iso) => {
   if (iso === hariIni()) return 'Hari ini';
@@ -902,58 +949,6 @@ function PilihTanggal({ label, nilai, onPilih }) {
   );
 }
 
-function FieldBulan({ label, nilai, onPilih }) {
-  const [buka, setBuka] = useState(false);
-  const [tahun, setTahun] = useState(Number(nilai.slice(0, 4)));
-  return (
-    <View>
-      {label ? <Text style={s.label}>{label}</Text> : null}
-      <TouchableOpacity
-        style={s.field}
-        activeOpacity={0.7}
-        onPress={() => {
-          if (!buka) setTahun(Number(nilai.slice(0, 4)));
-          setBuka(!buka);
-        }}
-      >
-        <Text style={s.fieldTeks}>{labelBulan(nilai)}</Text>
-        <Ionicons name="calendar-outline" size={22} color={C.abu} />
-      </TouchableOpacity>
-      {buka ? (
-        <View style={s.kalender}>
-          <View style={s.rowBetween}>
-            <TouchableOpacity onPress={() => setTahun(tahun - 1)} hitSlop={10}>
-              <Ionicons name="chevron-back" size={22} color={C.teal} />
-            </TouchableOpacity>
-            <Text style={s.bulanTeks}>{tahun}</Text>
-            <TouchableOpacity onPress={() => setTahun(tahun + 1)} hitSlop={10}>
-              <Ionicons name="chevron-forward" size={22} color={C.teal} />
-            </TouchableOpacity>
-          </View>
-          <View style={[s.chipRow, { marginTop: 12 }]}>
-            {BULAN_PENDEK.map((n, i) => {
-              const v = `${tahun}-${dua(i + 1)}`;
-              const aktif = v === nilai;
-              return (
-                <TouchableOpacity
-                  key={v}
-                  onPress={() => {
-                    onPilih(v);
-                    setBuka(false);
-                  }}
-                  style={[s.bulanChip, aktif && { backgroundColor: C.hijau, borderColor: C.hijau }]}
-                >
-                  <Text style={[s.chipTeks, aktif && { color: '#fff' }]}>{n}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function KartuNominal({ label, nilai, onChange }) {
   return (
     <View style={s.kartuNom}>
@@ -1343,9 +1338,9 @@ function FormKeluarHal({
   const rek = rekening.find((r) => r.id === rekId);
   const saldoNow = rek ? saldoRek(rek) : 0;
 
-  // Anggaran bulan terpilih, diurutkan dari yang paling sering dipakai
+  // Anggaran yang periodenya mencakup tanggal transaksi, diurutkan dari yang paling sering dipakai
   const opsiAng = anggaran
-    .filter((a) => a.bulan === tanggal.slice(0, 7))
+    .filter((a) => adaDiTanggal(a, tanggal))
     .map((a) => ({ key: a.id, label: a.nama, hitung: frekAng(a), a }))
     .sort((x, y) => y.hitung - x.hitung);
   const ang = opsiAng.find((o) => o.key === angId)?.a || null;
@@ -1438,7 +1433,7 @@ function FormKeluarHal({
       {opsiAng.length === 0 ? (
         <View>
           <Text style={s.label}>Hubungkan ke anggaran</Text>
-          <Text style={s.petunjuk}>Belum ada anggaran untuk {labelBulan(tanggal.slice(0, 7))}.</Text>
+          <Text style={s.petunjuk}>Belum ada anggaran yang periodenya mencakup {labelPanjang(tanggal)}.</Text>
         </View>
       ) : (
         <PilihSering
@@ -1453,6 +1448,7 @@ function FormKeluarHal({
       {ang ? (
         <View style={s.ringkasKartu}>
           <Text style={s.ringkasJudulTebal}>Anggaran setelah disimpan</Text>
+          <Text style={[s.trxSub, { marginTop: 2 }]}>{labelPeriode(ang)}</Text>
           <View style={[s.rowBetween, { marginTop: 12 }]}>
             <Text style={s.angTerpakai}>{rupiah(sesudah)} terpakai</Text>
             <Text style={[s.angPersen, persen > 100 && { color: C.merah }]}>{persen}%</Text>
@@ -1624,9 +1620,11 @@ function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBatal }) {
 
 // ====== HALAMAN: ATUR ANGGARAN (baru & edit) ======
 function FormAnggaranHal({ a, bulanAwal, rekening, tertaut, terpakaiSekarang, onSimpan, onBatal, onHapus }) {
+  const p0 = a ? periode(a) : { mulai: awalBulan(bulanAwal), selesai: akhirBulan(bulanAwal) };
   const [nama, setNama] = useState(a ? a.nama : '');
   const [rekId, setRekId] = useState(a ? a.rekening_id ?? null : null);
-  const [bulan, setBulan] = useState(a ? a.bulan : bulanAwal);
+  const [mulai, setMulai] = useState(p0.mulai);
+  const [selesai, setSelesai] = useState(p0.selesai);
   const [nominal, setNominal] = useState(a ? formatInput(a.nominal) : '');
   const [sudah, setSudah] = useState(a ? terpakaiSekarang > 0 : false);
   const [terpakaiTxt, setTerpakaiTxt] = useState(a && terpakaiSekarang > 0 ? formatInput(terpakaiSekarang) : '');
@@ -1634,21 +1632,37 @@ function FormAnggaranHal({ a, bulanAwal, rekening, tertaut, terpakaiSekarang, on
   const jatah = angkaDariTeks(nominal);
   const terpakai = sudah ? angkaDariTeks(terpakaiTxt) : 0;
   const sisa = jatah - terpakai;
+  const jumlahHari = selisihHari(mulai, selesai) + 1;
 
   const opsiRek = [
     { key: null, label: 'Tanpa rekening' },
     ...rekening.map((r) => ({ key: r.id, label: r.nama })),
   ];
 
+  const ubahMulai = (t) => {
+    setMulai(t);
+    if (selesai < t) setSelesai(t);
+  };
+
+  const pintas = [
+    { label: 'Bulan kalender', pasang: () => { setSelesai(akhirBulan(mulai.slice(0, 7))); setMulai(awalBulan(mulai.slice(0, 7))); } },
+    { label: '7 hari', pasang: () => setSelesai(tambahHari(mulai, 6)) },
+    { label: '30 hari', pasang: () => setSelesai(tambahHari(mulai, 29)) },
+    { label: '1 tahun', pasang: () => setSelesai(satuTahun(mulai)) },
+  ];
+
   const simpan = () => {
     if (!nama.trim()) return Alert.alert('Keterangan pengeluaran belum diisi');
     if (!jatah) return Alert.alert('Nominal anggaran belum diisi');
+    if (selesai < mulai) return Alert.alert('Tanggal akhir tidak boleh sebelum tanggal mulai');
     if (sudah && !terpakai) return Alert.alert('Isi nominal yang sudah terpakai');
     onSimpan({
       id: a ? a.id : null,
       nama: nama.trim(),
       nominal: jatah,
-      bulan,
+      mulai,
+      selesai,
+      bulan: mulai.slice(0, 7),
       rekId,
       ikon: a && a.nama === nama.trim() && a.ikon ? a.ikon : tebakIkon(nama),
       penyesuaian: terpakai - tertaut,
@@ -1674,7 +1688,18 @@ function FormAnggaranHal({ a, bulanAwal, rekening, tertaut, terpakaiSekarang, on
 
       <Dropdown label="Rekening yang digunakan" nilai={rekId} opsi={opsiRek} onPilih={setRekId} />
 
-      <FieldBulan label="Periode anggaran" nilai={bulan} onPilih={setBulan} />
+      <PilihTanggal label="Periode mulai" nilai={mulai} onPilih={ubahMulai} />
+      <PilihTanggal label="Periode sampai" nilai={selesai} onPilih={setSelesai} />
+      <View style={[s.chipRow, { marginTop: 10 }]}>
+        {pintas.map((p) => (
+          <Chip key={p.label} label={p.label} aktif={false} onPress={p.pasang} />
+        ))}
+      </View>
+      <Text style={[s.petunjuk, selesai < mulai && { color: C.merah }]}>
+        {selesai < mulai
+          ? 'Tanggal akhir tidak boleh sebelum tanggal mulai.'
+          : `Periode ${jumlahHari} hari: ${labelPanjang(mulai)} sampai ${labelPanjang(selesai)}.`}
+      </Text>
 
       <KartuNominal label="Nominal anggaran pengeluaran" nilai={nominal} onChange={setNominal} />
 
@@ -2156,7 +2181,7 @@ function Aplikasi() {
     setTransaksi(
       db.getAllSync('SELECT * FROM transaksi ORDER BY tanggal DESC, waktu DESC, id DESC')
     );
-    setAnggaran(db.getAllSync('SELECT * FROM anggaran ORDER BY id'));
+    setAnggaran(db.getAllSync('SELECT * FROM anggaran ORDER BY mulai, id'));
     setKategori(db.getAllSync('SELECT * FROM kategori ORDER BY id'));
     setHutang(db.getAllSync('SELECT * FROM hutang ORDER BY id DESC'));
   };
@@ -2205,8 +2230,9 @@ function Aplikasi() {
     total(transaksi.filter((t) => t.tipe === 'keluar' && t.anggaran_id === a.id), (t) => t.nominal);
   const terpakaiPer = (a) => Math.max(0, tertautPer(a) + (a.penyesuaian || 0));
 
+  // Anggaran yang periodenya bersinggungan dengan bulan b
   const hitungAng = (b) => {
-    const daftar = anggaran.filter((a) => a.bulan === b);
+    const daftar = anggaran.filter((a) => adaDiBulan(a, b));
     return {
       daftar,
       jatah: total(daftar, (a) => a.nominal),
@@ -2214,7 +2240,7 @@ function Aplikasi() {
     };
   };
 
-  // Seberapa sering sebuah anggaran (berdasarkan nama) dipakai di semua bulan
+  // Seberapa sering sebuah anggaran (berdasarkan nama) dipakai di semua periode
   const frekAnggaran = (a) =>
     transaksi.reduce((n, t) => {
       if (t.tipe !== 'keluar' || !t.anggaran_id) return n;
@@ -2334,13 +2360,13 @@ function Aplikasi() {
   const simpanAnggaran = (d) => {
     if (d.id) {
       db.runSync(
-        'UPDATE anggaran SET nama = ?, nominal = ?, bulan = ?, rekening_id = ?, ikon = ?, penyesuaian = ? WHERE id = ?',
-        [d.nama, d.nominal, d.bulan, d.rekId, d.ikon, d.penyesuaian, d.id]
+        'UPDATE anggaran SET nama = ?, nominal = ?, bulan = ?, mulai = ?, selesai = ?, rekening_id = ?, ikon = ?, penyesuaian = ? WHERE id = ?',
+        [d.nama, d.nominal, d.bulan, d.mulai, d.selesai, d.rekId, d.ikon, d.penyesuaian, d.id]
       );
     } else {
       db.runSync(
-        'INSERT INTO anggaran (nama, nominal, bulan, rekening_id, ikon, penyesuaian) VALUES (?, ?, ?, ?, ?, ?)',
-        [d.nama, d.nominal, d.bulan, d.rekId, d.ikon, d.penyesuaian]
+        'INSERT INTO anggaran (nama, nominal, bulan, mulai, selesai, rekening_id, ikon, penyesuaian) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [d.nama, d.nominal, d.bulan, d.mulai, d.selesai, d.rekId, d.ikon, d.penyesuaian]
       );
     }
     muatData();
@@ -2755,6 +2781,7 @@ function Aplikasi() {
         <Text style={s.bulanBtnTeks}>{labelBulan(bulan)}</Text>
         <Ionicons name="chevron-down" size={20} color={C.teks} />
       </TouchableOpacity>
+      <Text style={s.petunjuk}>Menampilkan anggaran yang periodenya bersinggungan dengan bulan ini.</Text>
 
       <View style={s.heroAng}>
         <Text style={s.heroLabel}>Sisa anggaran bulan ini</Text>
@@ -2807,7 +2834,12 @@ function Aplikasi() {
                 <Ionicons name="chevron-forward" size={20} color={C.abu} />
               </View>
 
-              <View style={[s.rowBetween, { marginTop: 14 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
+                <Ionicons name="calendar-outline" size={14} color={C.abu} />
+                <Text style={s.trxSub}>{labelPeriode(a)}</Text>
+              </View>
+
+              <View style={[s.rowBetween, { marginTop: 12 }]}>
                 <Text style={s.angTerpakai}>{rupiah(terpakai)}</Text>
                 <Text style={s.trxSub}>/ {rupiah(a.nominal)}</Text>
               </View>
@@ -2824,7 +2856,7 @@ function Aplikasi() {
       )}
 
       {angPilih.daftar.length > 0 ? (
-        <Text style={s.petunjuk}>Ketuk kartu anggaran untuk mengatur nominal atau mengubah jumlah terpakai.</Text>
+        <Text style={s.petunjuk}>Ketuk kartu anggaran untuk mengatur nominal, periode, atau jumlah terpakai.</Text>
       ) : null}
       {diLuar > 0 ? (
         <Text style={s.petunjuk}>Pengeluaran di luar anggaran bulan ini: {rupiah(diLuar)}</Text>
