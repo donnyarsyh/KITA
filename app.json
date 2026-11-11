@@ -4,7 +4,7 @@
     "slug": "keuangan",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/logo-kita.png",
     "android": {
       "package": "com.donny.keuangan",
@@ -14,7 +14,8 @@
       }
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font"
     ],
     "extra": {
       "eas": {
