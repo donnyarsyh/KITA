@@ -126,18 +126,23 @@ export function HutangTab({ hutang, rekMap, onTambah, onBuka }) {
   );
 }
 
-export function DetailHutang({ h, rekMap, onClose, onBayar, onLunas, onHapus }) {
+export function DetailHutang({ h, rekMap, rekening, saldoRek, onClose, onBayar, onLunas, onHapus }) {
   const [bayar, setBayar] = useState('');
+  // Rekening untuk pembayaran/pengembalian: awalnya rekening saat hutang dibuat, tapi bisa diganti
+  const [rekId, setRekId] = useState(() =>
+    h && rekMap[h.rekening_id] ? h.rekening_id : rekening[0]?.id ?? null
+  );
   if (!h) return null;
   const sisa = sisaHutang(h);
   const beri = h.peran === 'beri';
   const persen = h.nominal > 0 ? Math.round((h.dibayar / h.nominal) * 100) : 0;
-  const rek = rekMap[h.rekening_id];
+  const rekAsal = rekMap[h.rekening_id];
+  const rek = rekMap[rekId];
 
   return (
     <Sheet visible onClose={onClose} judul={h.nama}>
       <Text style={{ color: C.abu, marginBottom: 12 }}>
-        {[beri ? 'Pemberi hutang' : 'Penerima hutang', rek?.nama].filter(Boolean).join(' • ')}
+        {[beri ? 'Pemberi hutang' : 'Penerima hutang', rekAsal?.nama].filter(Boolean).join(' • ')}
       </Text>
       <Bar persen={persen} warna={sisa === 0 ? '#16a34a' : C.teal} />
       <View style={{ marginTop: 14, gap: 6 }}>
@@ -169,6 +174,18 @@ export function DetailHutang({ h, rekMap, onClose, onBayar, onLunas, onHapus }) 
           <Text style={[s.label, { marginTop: 18 }]}>
             {beri ? 'Catat pengembalian' : 'Catat pembayaran'}
           </Text>
+          {rekening.length > 0 ? (
+            <>
+              <Text style={[s.trxSub, { marginBottom: 6 }]}>
+                {beri ? 'Dikembalikan ke rekening' : 'Dibayar dari rekening'}
+              </Text>
+              <View style={[s.chipRow, { marginBottom: 12 }]}>
+                {rekening.map((r) => (
+                  <Chip key={r.id} label={r.nama} aktif={rekId === r.id} onPress={() => setRekId(r.id)} />
+                ))}
+              </View>
+            </>
+          ) : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TextInput
               style={[s.input, { flex: 1 }]}
@@ -181,7 +198,7 @@ export function DetailHutang({ h, rekMap, onClose, onBayar, onLunas, onHapus }) 
             <TouchableOpacity
               style={s.tambahBtn}
               onPress={() => {
-                if (onBayar(h, angkaDariTeks(bayar))) setBayar('');
+                if (onBayar(h, angkaDariTeks(bayar), rekId)) setBayar('');
               }}
             >
               <Text style={s.tombolTeks}>Catat</Text>
@@ -192,12 +209,12 @@ export function DetailHutang({ h, rekMap, onClose, onBayar, onLunas, onHapus }) 
             teks={
               rek
                 ? beri
-                  ? `Pengembalian akan menambah saldo ${rek.nama} dan tercatat sebagai pemasukan.`
-                  : `Pembayaran akan mengurangi saldo ${rek.nama} dan tercatat sebagai pengeluaran.`
-                : 'Rekening terkait sudah tidak ada, jadi pembayaran hanya dicatat di hutang ini.'
+                  ? `Pengembalian akan menambah saldo ${rek.nama} (saat ini ${rupiah(saldoRek(rek))}) dan tercatat sebagai pemasukan.`
+                  : `Pembayaran akan mengurangi saldo ${rek.nama} (saat ini ${rupiah(saldoRek(rek))}) dan tercatat sebagai pengeluaran.`
+                : 'Belum ada rekening, jadi pembayaran hanya dicatat di hutang ini.'
             }
           />
-          <TouchableOpacity style={[s.tombolBesar, { marginTop: 12 }]} onPress={() => onLunas(h)}>
+          <TouchableOpacity style={[s.tombolBesar, { marginTop: 12 }]} onPress={() => onLunas(h, rekId)}>
             <Text style={s.tombolTeks}>Lunasi sisa ({rupiah(sisa)})</Text>
           </TouchableOpacity>
         </>

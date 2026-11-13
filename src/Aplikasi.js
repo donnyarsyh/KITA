@@ -318,7 +318,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
   };
 
   // Mencatat pembayaran/pengembalian + transaksi pada rekening
-  const catatBayar = (h, jumlah) => {
+  const catatBayar = (h, jumlah, rekId) => {
     if (!jumlah) {
       Alert.alert('Nominal belum diisi');
       return false;
@@ -329,7 +329,8 @@ export default function Aplikasi({ pilihanTema, onTema }) {
       return false;
     }
     const beri = h.peran === 'beri';
-    const rek = rekMap[h.rekening_id];
+    // Rekening yang dipilih saat membayar; bila tidak ada, pakai rekening asal hutang
+    const rek = rekMap[rekId ?? h.rekening_id];
     if (rek && !beri && jumlah > saldoRekening(rek)) {
       Alert.alert(
         'Saldo rekening tidak cukup',
@@ -354,8 +355,8 @@ export default function Aplikasi({ pilihanTema, onTema }) {
     return true;
   };
 
-  const bayarHutang = (h, jumlah) => catatBayar(h, jumlah);
-  const lunasHutang = (h) => catatBayar(h, sisaHutang(h));
+  const bayarHutang = (h, jumlah, rekId) => catatBayar(h, jumlah, rekId);
+  const lunasHutang = (h, rekId) => catatBayar(h, sisaHutang(h), rekId);
 
   const hapusHutang = (h) => {
     const ids = transaksi.filter((t) => t.hutang_id === h.id).map((t) => t.id);
@@ -756,6 +757,8 @@ export default function Aplikasi({ pilihanTema, onTema }) {
         key={detailHutangId ?? 'x'}
         h={hutang.find((x) => x.id === detailHutangId) || null}
         rekMap={rekMap}
+        rekening={rekening}
+        saldoRek={saldoRekening}
         onClose={() => setDetailHutangId(null)}
         onBayar={bayarHutang}
         onLunas={lunasHutang}
