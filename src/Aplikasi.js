@@ -37,12 +37,12 @@ import { FormTarget } from './form/FormTarget';
 import { DetailHutang, HutangTab } from './screens/Hutang';
 import { Transaksi } from './screens/Transaksi';
 
-export default function Aplikasi({ pilihanTema, onTema }) {
+export default function Aplikasi({ pilihanTema, onTema, onPulih }) {
   const insets = useSafeAreaInsets();
 
   const [nama, setNama] = useState(() => ambilMeta('nama') || 'Donny');
   const [tab, setTab] = useState('beranda');
-  // null | 'rekening' | 'saldo' | 'pindah' | 'masuk' | 'keluar' | 'anggaran' | 'hutangForm' | 'pengaturan' | 'target' | 'tabung'
+  // null | 'rekening' | 'saldo' | 'pindah' | 'masuk' | 'keluar' | 'anggaran' | 'hutangForm' | 'pengaturan' | 'target' | 'tabung' | 'rekTabungan'
   const [halaman, setHalaman] = useState(null);
   const [editAngId, setEditAngId] = useState(null);
   const [detailHutangId, setDetailHutangId] = useState(null);
@@ -96,6 +96,9 @@ export default function Aplikasi({ pilihanTema, onTema }) {
 
   // ----- Perhitungan -----
   const rekMap = Object.fromEntries(rekening.map((r) => [r.id, r]));
+  // Rekening biasa (dipakai transaksi sehari-hari) dan rekening khusus tabungan dipisah
+  const rekUtama = rekening.filter((r) => !r.khusus_tabungan);
+  const rekTabungan = rekening.filter((r) => r.khusus_tabungan);
 
   // kecuali = id (atau daftar id) transaksi yang diabaikan, dipakai untuk cek sebelum menghapus
   const saldoRekening = (r, kecuali = null) => {
@@ -115,7 +118,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
     return saldo;
   };
 
-  const totalSaldo = total(rekening, (r) => saldoRekening(r));
+  const totalSaldo = total(rekUtama, (r) => saldoRekening(r));
 
   // Saldo sebuah target tabungan = uang yang ditabung dikurangi yang ditarik
   const saldoTabungan = (tb, kecuali = null) =>
@@ -125,7 +128,9 @@ export default function Aplikasi({ pilihanTema, onTema }) {
       if (t.tipe === 'tarik') return n - t.nominal;
       return n;
     }, 0);
-  const totalTabungan = total(tabungan, (tb) => saldoTabungan(tb));
+  const totalTarget = total(tabungan, (tb) => saldoTabungan(tb));
+  const totalRekTabungan = total(rekTabungan, (r) => saldoRekening(r));
+  const totalTabungan = totalTarget + totalRekTabungan;
 
   // Pengeluaran yang terhubung ke anggaran + penyesuaian manual
   const tertautPer = (a) =>
@@ -192,8 +197,8 @@ export default function Aplikasi({ pilihanTema, onTema }) {
 
   // ----- Aksi data -----
   const simpanRekening = (d) => {
-    db.runSync('INSERT INTO rekening (nama, jenis, nomor, saldo_awal, warna) VALUES (?, ?, ?, ?, ?)', [
-      d.nama, d.jenis, d.nomor, d.saldo, d.warna,
+    db.runSync('INSERT INTO rekening (nama, jenis, nomor, saldo_awal, warna, khusus_tabungan) VALUES (?, ?, ?, ?, ?, ?)', [
+      d.nama, d.jenis, d.nomor, d.saldo, d.warna, d.khusus ? 1 : 0,
     ]);
     muatData();
     setHalaman(null);
@@ -386,7 +391,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
 
   const bukaHalaman = (mode) => {
     const butuhRek = ['saldo', 'pindah', 'masuk', 'keluar', 'hutangForm'].includes(mode);
-    if (butuhRek && rekening.length === 0) {
+    if (butuhRek && rekUtama.length === 0) {
       Alert.alert('Belum ada rekening', 'Buat rekening dulu.');
       setHalaman('rekening');
       return;
@@ -435,7 +440,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
   };
 
   const bukaTabung = (mode = 'tabung', targetId = null) => {
-    if (rekening.length === 0) {
+    if (rekUtama.length === 0) {
       Alert.alert('Belum ada rekening', 'Buat rekening dulu.');
       setHalaman('rekening');
       return;
@@ -532,7 +537,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
           <Beranda
             nama={nama}
             transaksi={transaksi}
-            rekening={rekening}
+            rekening={rekUtama}
             rekMap={rekMap}
             totalSaldo={totalSaldo}
             totalTabungan={totalTabungan}
@@ -579,8 +584,14 @@ export default function Aplikasi({ pilihanTema, onTema }) {
             tabungan={tabungan}
             saldoTabungan={saldoTabungan}
             totalTabungan={totalTabungan}
+            totalTarget={totalTarget}
+            rekTabungan={rekTabungan}
+            saldoRekening={saldoRekening}
             onTarget={bukaTarget}
             onTabung={bukaTabung}
+            onTambahRek={() => setHalaman('rekTabungan')}
+            onPindah={() => bukaHalaman('pindah')}
+            onHapusRek={hapusRekening}
           />
         ) : (
           <HutangTab
@@ -649,9 +660,12 @@ export default function Aplikasi({ pilihanTema, onTema }) {
           onGanti={bukaHalaman}
         />
       ) : null}
+      {halaman === 'rekTabungan' ? (
+        <FormRekeningHal khusus totalSaldo={totalTabungan} onSimpan={simpanRekening} onBatal={() => setHalaman(null)} />
+      ) : null}
       {halaman === 'saldo' ? (
         <FormSaldoHal
-          rekening={rekening}
+          rekening={rekUtama}
           saldoRek={saldoRekening}
           totalSaldo={totalSaldo}
           opsiKat={opsiKategori('masuk')}
@@ -673,7 +687,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
       ) : null}
       {halaman === 'masuk' ? (
         <FormMasukHal
-          rekening={rekening}
+          rekening={rekUtama}
           saldoRek={saldoRekening}
           totalSaldo={totalSaldo}
           opsiKat={opsiKategori('masuk')}
@@ -685,7 +699,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
       ) : null}
       {halaman === 'keluar' ? (
         <FormKeluarHal
-          rekening={rekening}
+          rekening={rekUtama}
           anggaran={anggaran}
           saldoRek={saldoRekening}
           totalSaldo={totalSaldo}
@@ -703,7 +717,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
           key={editAng ? editAng.id : 'baru'}
           a={editAng}
           bulanAwal={bulan}
-          rekening={rekening}
+          rekening={rekUtama}
           tertaut={editAng ? tertautPer(editAng) : 0}
           terpakaiSekarang={editAng ? terpakaiPer(editAng) : 0}
           onSimpan={simpanAnggaran}
@@ -713,7 +727,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
       ) : null}
       {halaman === 'hutangForm' ? (
         <FormHutangHal
-          rekening={rekening}
+          rekening={rekUtama}
           saldoRek={saldoRekening}
           onSimpan={simpanHutang}
           onBatal={() => setHalaman(null)}
@@ -734,7 +748,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
         <FormTabung
           modeAwal={tabungAwal.mode}
           targetAwal={tabungAwal.targetId}
-          rekening={rekening}
+          rekening={rekUtama}
           tabungan={tabungan}
           saldoRek={saldoRekening}
           saldoTab={saldoTabungan}
@@ -750,6 +764,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
           onTema={onTema}
           onSimpan={simpanNama}
           onBatal={() => setHalaman(null)}
+          onPulih={onPulih}
         />
       ) : null}
 
@@ -757,7 +772,7 @@ export default function Aplikasi({ pilihanTema, onTema }) {
         key={detailHutangId ?? 'x'}
         h={hutang.find((x) => x.id === detailHutangId) || null}
         rekMap={rekMap}
-        rekening={rekening}
+        rekening={rekUtama}
         saldoRek={saldoRekening}
         onClose={() => setDetailHutangId(null)}
         onBayar={bayarHutang}

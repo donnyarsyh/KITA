@@ -1,11 +1,13 @@
+import { ekspor, pilihFileCadangan, pulihkan, ringkasCadangan } from '../backup';
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, s } from '../tema';
 import { Catatan, LayarForm } from '../components/LayarForm';
 
-export function Pengaturan({ nama, pilihanTema, onTema, onSimpan, onBatal }) {
+export function Pengaturan({ nama, pilihanTema, onTema, onSimpan, onBatal, onPulih }) {
   const [teks, setTeks] = useState(nama);
+  const [sibuk, setSibuk] = useState(false);
 
   const OPSI = [
     { k: 'terang', label: 'Terang', sub: 'Latar putih, cocok di siang hari', ikon: 'sunny-outline' },
@@ -16,6 +18,49 @@ export function Pengaturan({ nama, pilihanTema, onTema, onSimpan, onBatal }) {
   const simpan = () => {
     if (!teks.trim()) return Alert.alert('Nama belum diisi', 'Isi nama yang ingin ditampilkan di Beranda.');
     onSimpan(teks.trim());
+  };
+
+  const cadangkan = async () => {
+    setSibuk(true);
+    try {
+      const c = await ekspor();
+      Alert.alert('Cadangan siap', `Berisi ${ringkasCadangan(c)}. Pastikan file tersimpan (Drive, WhatsApp, atau File).`);
+    } catch (e) {
+      Alert.alert('Gagal mencadangkan', String(e && e.message ? e.message : e));
+    }
+    setSibuk(false);
+  };
+
+  const pulihkanData = async () => {
+    setSibuk(true);
+    try {
+      const f = await pilihFileCadangan();
+      if (f) {
+        Alert.alert(
+          'Ganti semua data?',
+          `File: ${f.nama}\nBerisi ${ringkasCadangan(f.isi)}.\n\nSEMUA data di HP ini akan diganti dengan isi file. Tindakan ini tidak bisa dibatalkan. Cadangkan data saat ini dulu bila perlu.`,
+          [
+            { text: 'Batal', style: 'cancel' },
+            {
+              text: 'Ganti semua data',
+              style: 'destructive',
+              onPress: () => {
+                try {
+                  pulihkan(f.isi);
+                  Alert.alert('Berhasil dipulihkan', 'Data dari file cadangan sudah dimuat.');
+                  onPulih();
+                } catch (e) {
+                  Alert.alert('Gagal memulihkan', 'Data di HP tidak diubah. ' + String(e && e.message ? e.message : e));
+                }
+              },
+            },
+          ]
+        );
+      }
+    } catch (e) {
+      Alert.alert('Tidak bisa membuka file', String(e && e.message ? e.message : e));
+    }
+    setSibuk(false);
   };
 
   return (
@@ -57,6 +102,23 @@ export function Pengaturan({ nama, pilihanTema, onTema, onSimpan, onBatal }) {
         );
       })}
       <Catatan ikon="information-circle-outline" teks="Pilihan tampilan langsung berlaku dan diingat. Tombol Simpan dipakai untuk nama." />
+
+      <Text style={[s.label, { marginTop: 22 }]}>Cadangan data</Text>
+      <TouchableOpacity style={[s.pilihTema, sibuk && { opacity: 0.5 }]} disabled={sibuk} onPress={cadangkan}>
+        <Ionicons name="cloud-upload-outline" size={22} color={C.teal} />
+        <View style={{ flex: 1 }}>
+          <Text style={s.trxJudul}>Cadangkan data</Text>
+          <Text style={s.trxSub}>Simpan semua data ke satu file, lalu kirim ke Drive, WhatsApp, atau File</Text>
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity style={[s.pilihTema, sibuk && { opacity: 0.5 }]} disabled={sibuk} onPress={pulihkanData}>
+        <Ionicons name="cloud-download-outline" size={22} color={C.teal} />
+        <View style={{ flex: 1 }}>
+          <Text style={s.trxJudul}>Pulihkan dari file</Text>
+          <Text style={s.trxSub}>Pilih file cadangan untuk memulihkan data, mis. di HP baru</Text>
+        </View>
+      </TouchableOpacity>
+      <Catatan ikon="warning-outline" teks="Memulihkan akan MENGGANTI seluruh data di HP ini dengan isi file cadangan." />
     </LayarForm>
   );
 }

@@ -6,7 +6,7 @@ import { C, s } from '../tema';
 import { Dropdown, KartuNominal } from '../components/Input';
 import { BarisRingkas, Catatan, LayarForm, Ringkasan } from '../components/LayarForm';
 
-export function FormRekeningHal({ totalSaldo, onSimpan, onBatal, onGanti }) {
+export function FormRekeningHal({ khusus = false, totalSaldo, onSimpan, onBatal, onGanti }) {
   const [jenis, setJenis] = useState('bank');
   const [nama, setNama] = useState('');
   const [nomor, setNomor] = useState('');
@@ -23,17 +23,18 @@ export function FormRekeningHal({ totalSaldo, onSimpan, onBatal, onGanti }) {
       nomor: jenis === 'bank' ? nomor : '',
       saldo: awal,
       warna,
+      khusus,
     });
   };
 
   return (
     <LayarForm
-      judul="Tambah rekening"
-      sub="Satukan semua saldo dalam satu tempat."
-      tabAktif="rekening"
+      judul={khusus ? 'Rekening tabungan' : 'Tambah rekening'}
+      sub={khusus ? 'Rekening khusus untuk menyimpan tabungan.' : 'Satukan semua saldo dalam satu tempat.'}
+      tabAktif={khusus ? undefined : 'rekening'}
       onGanti={onGanti}
       onBatal={onBatal}
-      tombol="Simpan rekening"
+      tombol={khusus ? 'Simpan rekening tabungan' : 'Simpan rekening'}
       onTombol={simpan}
     >
       <Dropdown label="Jenis rekening" nilai={jenis} opsi={JENIS} onPilih={setJenis} />
@@ -41,7 +42,7 @@ export function FormRekeningHal({ totalSaldo, onSimpan, onBatal, onGanti }) {
       <Text style={s.label}>Nama rekening</Text>
       <TextInput
         style={s.input}
-        placeholder={jenis === 'bank' ? 'mis. Mandiri' : jenis === 'ewallet' ? 'mis. GoPay' : 'mis. Tunai'}
+        placeholder={khusus ? 'mis. Celengan BCA' : jenis === 'bank' ? 'mis. Mandiri' : jenis === 'ewallet' ? 'mis. GoPay' : 'mis. Tunai'}
         placeholderTextColor={C.abu}
         value={nama}
         onChangeText={setNama}
@@ -83,12 +84,18 @@ export function FormRekeningHal({ totalSaldo, onSimpan, onBatal, onGanti }) {
       </View>
 
       <Ringkasan>
-        <BarisRingkas label="Total saldo saat ini" nilai={rupiah(totalSaldo)} />
+        <BarisRingkas label={khusus ? 'Total tabungan saat ini' : 'Total saldo saat ini'} nilai={rupiah(totalSaldo)} />
         <View style={s.pemisah} />
         <BarisRingkas label="Total setelah disimpan" nilai={rupiah(totalSaldo + awal)} teal tebal />
       </Ringkasan>
 
-      <Catatan teks="Saldo awal menambah total saldo, tetapi tidak dihitung sebagai pemasukan bulan ini." />
+      <Catatan
+        teks={
+          khusus
+            ? 'Rekening tabungan tidak dihitung di Total saldo Beranda. Isi lewat Pindah saldo dari rekening biasa.'
+            : 'Saldo awal menambah total saldo, tetapi tidak dihitung sebagai pemasukan bulan ini.'
+        }
+      />
     </LayarForm>
   );
 }

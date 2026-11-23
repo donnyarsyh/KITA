@@ -7,8 +7,13 @@ import { Dropdown, KartuNominal, PilihTanggal } from '../components/Input';
 import { BarisRingkas, Catatan, LayarForm, Ringkasan } from '../components/LayarForm';
 
 export function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBatal }) {
-  const [dariId, setDariId] = useState(rekening[0]?.id ?? null);
-  const [keId, setKeId] = useState(rekening[1]?.id ?? null);
+  // Awalnya: dari rekening biasa pertama, ke rekening tabungan (jika ada)
+  const biasa = rekening.filter((r) => !r.khusus_tabungan);
+  const tab = rekening.filter((r) => r.khusus_tabungan);
+  const awalDari = biasa[0] ?? rekening[0];
+  const awalKe = tab[0] ?? rekening.find((r) => r.id !== awalDari?.id);
+  const [dariId, setDariId] = useState(awalDari?.id ?? null);
+  const [keId, setKeId] = useState(awalKe?.id ?? null);
   const [nominal, setNominal] = useState('');
   const [tanggal, setTanggal] = useState(hariIni());
   const [ket, setKet] = useState('');
@@ -16,7 +21,10 @@ export function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBata
   const jumlah = angkaDariTeks(nominal);
   const dari = rekening.find((r) => r.id === dariId);
   const ke = rekening.find((r) => r.id === keId);
-  const opsiRek = rekening.map((r) => ({ key: r.id, label: `${r.nama} • ${rupiah(saldoRek(r))}` }));
+  const opsiRek = rekening.map((r) => ({
+    key: r.id,
+    label: `${r.nama}${r.khusus_tabungan ? ' (Tabungan)' : ''} • ${rupiah(saldoRek(r))}`,
+  }));
   const kurang = jumlah > 0 && !!dari && jumlah > saldoRek(dari);
 
   const pilihDari = (k) => {
@@ -36,12 +44,6 @@ export function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBata
     if (!dari || !ke) return Alert.alert('Pilih rekening asal dan tujuan');
     if (dari.id === ke.id) return Alert.alert('Rekening asal dan tujuan tidak boleh sama');
     if (!jumlah) return Alert.alert('Nominal belum diisi');
-    if (jumlah > totalSaldo) {
-      return Alert.alert(
-        'Saldo tidak cukup',
-        `Nominal ${rupiah(jumlah)} melebihi total saldo semua rekening (${rupiah(totalSaldo)}).`
-      );
-    }
     if (jumlah > saldoRek(dari)) {
       return Alert.alert(
         'Saldo rekening tidak cukup',
@@ -65,7 +67,7 @@ export function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBata
   return (
     <LayarForm
       judul="Pindah saldo"
-      sub="Antarrekening, tanpa mengubah total saldo."
+      sub="Antarrekening, termasuk ke rekening tabungan."
       onBatal={onBatal}
       tombol="Simpan perpindahan"
       onTombol={simpan}
@@ -119,7 +121,13 @@ export function FormPindahHal({ rekening, saldoRek, totalSaldo, onSimpan, onBata
       ) : (
         <Catatan
           ikon="swap-horizontal"
-          teks={`Total saldo tetap ${rupiah(totalSaldo)}. Pindah saldo tidak masuk ke laporan pemasukan atau pengeluaran.`}
+          teks={
+            dari && ke && !!dari.khusus_tabungan !== !!ke.khusus_tabungan
+              ? ke.khusus_tabungan
+                ? `Uang pindah ke tabungan, jadi Total saldo di Beranda berkurang ${rupiah(jumlah)} dan Total tabungan bertambah.`
+                : `Uang kembali dari tabungan, jadi Total saldo di Beranda bertambah ${rupiah(jumlah)} dan Total tabungan berkurang.`
+              : `Total saldo tetap ${rupiah(totalSaldo)}. Pindah saldo tidak masuk ke laporan pemasukan atau pengeluaran.`
+          }
         />
       )}
     </LayarForm>

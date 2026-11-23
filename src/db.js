@@ -84,6 +84,7 @@ tambahKolom('anggaran', 'penyesuaian', 'INTEGER DEFAULT 0');
 tambahKolom('anggaran', 'mulai', 'TEXT');
 tambahKolom('anggaran', 'selesai', 'TEXT');
 tambahKolom('rekening', 'warna', 'INTEGER');
+tambahKolom('rekening', 'khusus_tabungan', 'INTEGER DEFAULT 0');
 
 // Anggaran lama (per bulan) diubah menjadi rentang 1 s.d. akhir bulan
 db.execSync(`
@@ -124,3 +125,7 @@ export const simpanMeta = (kunci, nilai) => {
   db.runSync('INSERT OR REPLACE INTO meta (kunci, nilai) VALUES (?, ?)', [kunci, String(nilai)]);
 };
 
+
+export const hapusMeta = (kunci) => {
+  db.runSync('DELETE FROM meta WHERE kunci = ?', [kunci]);
+};

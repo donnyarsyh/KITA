@@ -9,6 +9,7 @@ import Aplikasi from './src/Aplikasi';
 export default function App() {
   const sistem = useColorScheme(); // 'light' | 'dark' (dari pengaturan HP)
   const [pilihanTema, setPilihanTema] = useState(() => ambilMeta('tema') || 'sistem');
+  const [versi, setVersi] = useState(0); // naik 1 setiap kali data dipulihkan, untuk memuat ulang seluruh aplikasi
 
   const mode = pilihanTema === 'sistem' ? (sistem === 'dark' ? 'gelap' : 'terang') : pilihanTema;
   terapkanTema(mode); // aman dipanggil berulang: hanya bekerja bila mode berubah
@@ -18,9 +19,15 @@ export default function App() {
     setPilihanTema(pilihan);
   };
 
+  // Setelah data dipulihkan dari cadangan: baca ulang tema dan muat ulang aplikasi dari awal
+  const sesudahPulih = () => {
+    setPilihanTema(ambilMeta('tema') || 'sistem');
+    setVersi((v) => v + 1);
+  };
+
   return (
     <SafeAreaProvider>
-      <Aplikasi pilihanTema={pilihanTema} onTema={gantiTema} />
+      <Aplikasi key={versi} pilihanTema={pilihanTema} onTema={gantiTema} onPulih={sesudahPulih} />
     </SafeAreaProvider>
   );
 }

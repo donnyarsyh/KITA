@@ -4,9 +4,12 @@ import { gayaIkon, hariIni, rupiah, selisihHari, tglPendek, total } from '../hel
 import { C, s } from '../tema';
 import { Bar, Header, Judul, Kosong } from '../components/Dasar';
 
-export function Tabungan({ tabungan, saldoTabungan, totalTabungan, onTarget, onTabung }) {
+export function Tabungan({
+  tabungan, saldoTabungan, totalTabungan, totalTarget: saldoTarget, rekTabungan, saldoRekening,
+  onTarget, onTabung, onTambahRek, onPindah, onHapusRek,
+}) {
   const totalTarget = total(tabungan, (tb) => tb.target);
-  const persenTotal = totalTarget > 0 ? Math.round((totalTabungan / totalTarget) * 100) : 0;
+  const persenTotal = totalTarget > 0 ? Math.round((saldoTarget / totalTarget) * 100) : 0;
 
   return (
     <>
@@ -20,7 +23,7 @@ export function Tabungan({ tabungan, saldoTabungan, totalTabungan, onTarget, onT
         {totalTarget > 0 ? (
           <>
             <View style={s.rowBetween}>
-              <Text style={s.heroLabel}>dari target {rupiah(totalTarget)}</Text>
+              <Text style={s.heroLabel}>Target terkumpul {rupiah(saldoTarget)} dari {rupiah(totalTarget)}</Text>
               <Text style={s.heroPersen}>{persenTotal}%</Text>
             </View>
             <View style={{ marginVertical: 12 }}>
@@ -28,7 +31,9 @@ export function Tabungan({ tabungan, saldoTabungan, totalTabungan, onTarget, onT
             </View>
           </>
         ) : null}
-        <Text style={s.heroLabel}>Uang di sini sudah keluar dari saldo rekening.</Text>
+        <Text style={s.heroLabel}>
+          Rekening tabungan {rupiah(totalTabungan - saldoTarget)} • Uang di sini sudah keluar dari Total saldo.
+        </Text>
       </View>
 
       <View style={[s.aksiRow, { marginTop: 16 }]}>
@@ -45,6 +50,38 @@ export function Tabungan({ tabungan, saldoTabungan, totalTabungan, onTarget, onT
           <Text style={s.aksiTeks}>Tarik ke rekening</Text>
         </TouchableOpacity>
       </View>
+
+      <Judul teks="Rekening tabungan" aksi={`${rekTabungan.length} rekening`} />
+      {rekTabungan.length === 0 ? (
+        <Kosong teks="Belum ada rekening khusus tabungan, mis. Celengan BCA atau Tabungan Emas." />
+      ) : (
+        rekTabungan.map((r) => (
+          <View key={r.id} style={s.angKartu}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={[s.angIkon, { backgroundColor: C.mint }]}>
+                <Ionicons name="business-outline" size={22} color={C.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.trxJudul} numberOfLines={1}>{r.nama}</Text>
+                <Text style={s.trxSub}>Rekening tabungan</Text>
+              </View>
+              <Text style={s.angTerpakai}>{rupiah(saldoRekening(r))}</Text>
+            </View>
+            <View style={[s.rowBetween, { marginTop: 12 }]}>
+              <TouchableOpacity onPress={onPindah} hitSlop={8}>
+                <Text style={s.linkTeal}>Pindah saldo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => onHapusRek(r)} hitSlop={8}>
+                <Text style={{ color: C.merah, fontWeight: '700' }}>Hapus</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))
+      )}
+      <TouchableOpacity style={s.salinBtn} activeOpacity={0.7} onPress={onTambahRek}>
+        <Ionicons name="add-circle-outline" size={18} color={C.teal} />
+        <Text style={s.chipLinkTeks}>Tambah rekening tabungan</Text>
+      </TouchableOpacity>
 
       <Judul teks="Target tabungan" aksi={`${tabungan.length} target`} />
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   adaDiRentang,
@@ -9,6 +9,7 @@ import {
   geserBulan,
   hariIni,
   IKON_ANG,
+  konfirmasi,
   labelBulan,
   labelPanjang,
   labelPeriode,
@@ -19,6 +20,7 @@ import {
   tglPendek,
   total,
 } from '../helper';
+import { hapusMeta, ambilMeta, simpanMeta } from '../db';
 import { C, s } from '../tema';
 import { Bar, Chip, Header, Judul, Kosong } from '../components/Dasar';
 import { PilihTanggal } from '../components/Input';
@@ -27,9 +29,15 @@ export function Anggaran({
   anggaran, transaksi, rekMap, bulan, terpakaiPer, bukaAnggaran, setModalBulan, onSalin,
 }) {
   // Filter: 'bulan' = per bulan kalender, 'rentang' = periode bebas (mis. 21 Okt - 22 Nov)
-  const [mode, setMode] = useState('bulan');
-  const [dari, setDari] = useState(awalBulan(bulan));
-  const [sampai, setSampai] = useState(akhirBulan(bulan));
+  // Rentang yang disimpan tetap aktif saat aplikasi ditutup lalu dibuka lagi (disimpan di tabel meta)
+  const [tersimpan, setTersimpan] = useState(() => {
+    const m = ambilMeta('ang_rentang');
+    const [a, b] = m ? m.split('|') : [];
+    return a && b ? { dari: a, sampai: b } : null;
+  });
+  const [mode, setMode] = useState(tersimpan ? 'rentang' : 'bulan');
+  const [dari, setDari] = useState(tersimpan ? tersimpan.dari : awalBulan(bulan));
+  const [sampai, setSampai] = useState(tersimpan ? tersimpan.sampai : akhirBulan(bulan));
   const rentang = mode === 'rentang';
   const dariEf = rentang ? dari : awalBulan(bulan);
   const sampaiEf = rentang ? (sampai < dari ? dari : sampai) : akhirBulan(bulan);
@@ -44,6 +52,19 @@ export function Anggaran({
     { label: 'Bulan ini', pasang: () => { setDari(awalBulan(hariIni().slice(0, 7))); setSampai(akhirBulan(hariIni().slice(0, 7))); } },
     { label: 'Tahun ini', pasang: () => { setDari(hariIni().slice(0, 4) + '-01-01'); setSampai(hariIni().slice(0, 4) + '-12-31'); } },
   ];
+
+  const berubah = !tersimpan || tersimpan.dari !== dariEf || tersimpan.sampai !== sampaiEf;
+  const simpanRentang = () => {
+    simpanMeta('ang_rentang', `${dariEf}|${sampaiEf}`);
+    setTersimpan({ dari: dariEf, sampai: sampaiEf });
+    Alert.alert('Rentang disimpan', 'Menu Anggaran akan membuka rentang ini setiap kali aplikasi dibuka.');
+  };
+  const hapusRentang = () =>
+    konfirmasi('Hapus rentang tersimpan?', 'Anggaran kembali ditampilkan per bulan.', () => {
+      hapusMeta('ang_rentang');
+      setTersimpan(null);
+      setMode('bulan');
+    });
 
   const daftar = anggaran.filter((a) => adaDiRentang(a, dariEf, sampaiEf));
   const angPilih = {
@@ -72,10 +93,22 @@ export function Anggaran({
         onPlus={() => bukaAnggaran(null)}
       />
 
-      <View style={[s.chipRow, { marginTop: 16 }]}>
-        <Chip label="Per bulan" aktif={!rentang} onPress={() => setMode('bulan')} />
-        <Chip label="Rentang tanggal" aktif={rentang} onPress={() => setMode('rentang')} />
-      </View>
+      {tersimpan ? (
+        <View style={[s.rowBetween, { marginTop: 16 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="bookmark" size={16} color={C.teal} />
+            <Text style={{ color: C.teal, fontWeight: '700' }}>Rentang tersimpan</Text>
+          </View>
+          <TouchableOpacity onPress={hapusRentang} hitSlop={8}>
+            <Text style={{ color: C.merah, fontWeight: '700' }}>Hapus rentang</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={[s.chipRow, { marginTop: 16 }]}>
+          <Chip label="Per bulan" aktif={!rentang} onPress={() => setMode('bulan')} />
+          <Chip label="Rentang tanggal" aktif={rentang} onPress={() => setMode('rentang')} />
+        </View>
+      )}
 
       {rentang ? (
         <>
@@ -86,6 +119,11 @@ export function Anggaran({
               <Chip key={p.label} label={p.label} aktif={false} onPress={p.pasang} />
             ))}
           </View>
+          {berubah ? (
+            <TouchableOpacity style={[s.tombolBesar, { marginTop: 14 }]} onPress={simpanRentang}>
+              <Text style={s.tombolTeks}>{tersimpan ? 'Simpan perubahan rentang' : 'Simpan rentang ini'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={s.petunjuk}>
             {`${selisihHari(dariEf, sampaiEf) + 1} hari: ${labelPanjang(dariEf)} sampai ${labelPanjang(sampaiEf)}. Menampilkan anggaran yang periodenya bersinggungan dengan rentang ini.`}
           </Text>
